@@ -35,7 +35,7 @@ def main():
     metrics.report_scores()
     metrics.report_confusion_matrix()
 
-    # bilstm模型
+    #bilstm模型
     print("加载并评估bilstm模型...")
     bilstm_word2id, bilstm_tag2id = extend_maps(word2id, tag2id, for_crf=False)
     bilstm_model = load_model(BiLSTM_MODEL_PATH)

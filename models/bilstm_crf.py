@@ -134,41 +134,68 @@ class BILSTM_Model(object):
 
             return val_loss
 
-    def test(self, word_lists, tag_lists, word2id, tag2id):
-        """返回最佳模型在测试集上的预测结果"""
-        # 准备数据
-        word_lists, tag_lists, indices = sort_by_lengths(word_lists, tag_lists)
-        tensorized_sents, lengths = tensorized(word_lists, word2id)
-        tensorized_sents = tensorized_sents.to(self.device)
-
+    def test(self, word_lists, tag_lists, word2id, tag2id, batch_size=32):
+        """修复版本 - 对每个batch内部按长度排序"""
         self.best_model.eval()
+
+        #if hasattr(self.best_model, 'bilstm'):
+        #    self.best_model.bilstm.flatten_parameters()
+
+        all_pred_tag_lists = []
+
         with torch.no_grad():
-            batch_tagids = self.best_model.test(
-                tensorized_sents, lengths, tag2id)
+            for i in range(0, len(word_lists), batch_size):
+                batch_end = min(i + batch_size, len(word_lists))
+                batch_word_lists = word_lists[i:batch_end]
+                batch_tag_lists = tag_lists[i:batch_end] if tag_lists else None
 
-        # 将id转化为标注
-        pred_tag_lists = []
-        id2tag = dict((id_, tag) for tag, id_ in tag2id.items())
-        for i, ids in enumerate(batch_tagids):
-            tag_list = []
-            if self.crf:
-                for j in range(lengths[i] - 1):  # crf解码过程中，end被舍弃
-                    tag_list.append(id2tag[ids[j].item()])
-            else:
-                for j in range(lengths[i]):
-                    tag_list.append(id2tag[ids[j].item()])
-            pred_tag_lists.append(tag_list)
+                # 对当前batch内的句子按长度排序（从长到短）
+                if batch_tag_lists:
+                    # 如果有标签，一起排序
+                    batch_data = list(zip(batch_word_lists, batch_tag_lists, range(len(batch_word_lists))))
+                    batch_data_sorted = sorted(batch_data, key=lambda x: len(x[0]), reverse=True)
+                    batch_word_lists_sorted, batch_tag_lists_sorted, original_indices = zip(*batch_data_sorted)
+                    batch_word_lists_sorted = list(batch_word_lists_sorted)
+                    batch_tag_lists_sorted = list(batch_tag_lists_sorted)
+                    original_indices = list(original_indices)
+                else:
+                    # 如果没有标签，只对句子排序
+                    batch_data = list(zip(batch_word_lists, range(len(batch_word_lists))))
+                    batch_data_sorted = sorted(batch_data, key=lambda x: len(x[0]), reverse=True)
+                    batch_word_lists_sorted, original_indices = zip(*batch_data_sorted)
+                    batch_word_lists_sorted = list(batch_word_lists_sorted)
+                    original_indices = list(original_indices)
+                    batch_tag_lists_sorted = None
 
-        # indices存有根据长度排序后的索引映射的信息
-        # 比如若indices = [1, 2, 0] 则说明原先索引为1的元素映射到的新的索引是0，
-        # 索引为2的元素映射到新的索引是1...
-        # 下面根据indices将pred_tag_lists和tag_lists转化为原来的顺序
-        ind_maps = sorted(list(enumerate(indices)), key=lambda e: e[1])
-        indices, _ = list(zip(*ind_maps))
-        pred_tag_lists = [pred_tag_lists[i] for i in indices]
-        tag_lists = [tag_lists[i] for i in indices]
+                # 使用修复后的tensorized函数处理排序后的batch
+                tensorized_sents, lengths = tensorized(batch_word_lists_sorted, word2id)
+                tensorized_sents = tensorized_sents.to(self.device)
 
-        return pred_tag_lists, tag_lists
+                # 模型预测
+                batch_tagids = self.best_model.test(tensorized_sents, lengths, tag2id)
+
+                # 将id转化为标注
+                id2tag = dict((id_, tag) for tag, id_ in tag2id.items())
+                batch_pred_tag_lists = [None] * len(batch_word_lists_sorted)
+
+                for j, ids in enumerate(batch_tagids):
+                    tag_list = []
+                    if self.crf:
+                        for k in range(lengths[j] - 1):  # crf解码过程中，end被舍弃
+                            tag_list.append(id2tag[ids[k].item()])
+                    else:
+                        for k in range(lengths[j]):
+                            tag_list.append(id2tag[ids[k].item()])
+                    batch_pred_tag_lists[j] = tag_list
+
+                # 恢复batch内的原始顺序
+                restored_pred_lists = [None] * len(batch_pred_tag_lists)
+                for new_idx, original_idx in enumerate(original_indices):
+                    restored_pred_lists[original_idx] = batch_pred_tag_lists[new_idx]
+
+                all_pred_tag_lists.extend(restored_pred_lists)
+
+        return all_pred_tag_lists, tag_lists
 
 
 class BiLSTM_CRF(nn.Module):
