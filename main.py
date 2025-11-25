@@ -6,6 +6,7 @@ from evaluate import hmm_train_eval, crf_train_eval, \
 
 
 def main():
+
     """训练模型，评估结果"""
 
     # 读取数据
@@ -15,20 +16,23 @@ def main():
     dev_word_lists, dev_tag_lists = build_corpus("dev", make_vocab=False)
     test_word_lists, test_tag_lists = build_corpus("test", make_vocab=False)
 
+    remove_O=False
     # 训练评估ｈｍｍ模型
     print("正在训练评估HMM模型...")
     hmm_pred = hmm_train_eval(
         (train_word_lists, train_tag_lists),
         (test_word_lists, test_tag_lists),
         word2id,
-        tag2id
+        tag2id,
+        remove_O=remove_O
     )
 
     # 训练评估CRF模型
     print("正在训练评估CRF模型...")
     crf_pred = crf_train_eval(
         (train_word_lists, train_tag_lists),
-        (test_word_lists, test_tag_lists)
+        (test_word_lists, test_tag_lists),
+        remove_O=remove_O
     )
 
     # 训练评估BI-LSTM模型
@@ -40,7 +44,8 @@ def main():
         (dev_word_lists, dev_tag_lists),
         (test_word_lists, test_tag_lists),
         bilstm_word2id, bilstm_tag2id,
-        crf=False
+        crf=False,
+        remove_O=remove_O
     )
 
     print("正在训练评估Bi-LSTM+CRF模型...")
@@ -60,7 +65,7 @@ def main():
         (train_word_lists, train_tag_lists),
         (dev_word_lists, dev_tag_lists),
         (test_word_lists, test_tag_lists),
-        crf_word2id, crf_tag2id
+        crf_word2id, crf_tag2id,remove_O=remove_O
     )
 
     ensemble_evaluate(
