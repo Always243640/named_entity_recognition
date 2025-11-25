@@ -30,6 +30,18 @@ class Metrics(object):
         # 计算F1分数
         self.f1_scores = self.cal_f1()
 
+        # 按实体类型聚合的评价指标
+        self.entity_types = self._extract_entity_types()
+        self.entity_correct_counts, self.entity_golden_counts, \
+            self.entity_predict_counts = self._aggregate_entity_counts()
+        self.entity_precision = {}
+        self.entity_recall = {}
+        self.entity_f1 = {}
+        self.overall_precision = 0.
+        self.overall_recall = 0.
+        self.overall_f1 = 0.
+        self._cal_entity_level_metrics()
+
     def cal_precision(self):
 
         precision_scores = {}
@@ -69,31 +81,29 @@ class Metrics(object):
 
           avg/total      0.779     0.764     0.770      6178
         """
-        # 打印表头
         header_format = '{:>9s}  {:>9} {:>9} {:>9} {:>9}'
         header = ['precision', 'recall', 'f1-score', 'support']
         print(header_format.format('', *header))
 
         row_format = '{:>9s}  {:>9.4f} {:>9.4f} {:>9.4f} {:>9}'
-        # 打印每个标签的 精确率、召回率、f1分数
-        for tag in self.tagset:
-            print(row_format.format(
-                tag,
-                self.precision_scores[tag],
-                self.recall_scores[tag],
-                self.f1_scores[tag],
-                self.golden_tags_counter[tag]
-            ))
-
-        # 计算并打印平均值
-        avg_metrics = self._cal_weighted_average()
+        # 打印总体指标
         print(row_format.format(
-            'avg/total',
-            avg_metrics['precision'],
-            avg_metrics['recall'],
-            avg_metrics['f1_score'],
-            len(self.golden_tags)
+            'overall',
+            self.overall_precision,
+            self.overall_recall,
+            self.overall_f1,
+            sum(self.entity_golden_counts.values())
         ))
+
+        # 打印每类实体的指标
+        for entity in sorted(self.entity_types):
+            print(row_format.format(
+                entity,
+                self.entity_precision[entity],
+                self.entity_recall[entity],
+                self.entity_f1[entity],
+                self.entity_golden_counts[entity]
+            ))
 
     def count_correct_tags(self):
         """计算每种标签预测正确的个数(对应精确率、召回率计算公式上的tp)，用于后面精确率以及召回率的计算"""
@@ -126,6 +136,68 @@ class Metrics(object):
             weighted_average[metric] /= total
 
         return weighted_average
+
+    def _extract_entity_type(self, tag):
+        if tag == 'O':
+            return None
+        try:
+            return tag.split('-')[1]
+        except IndexError:
+            return None
+
+    def _extract_entity_types(self):
+        entity_types = set()
+        for tag in self.tagset:
+            entity = self._extract_entity_type(tag)
+            if entity:
+                entity_types.add(entity)
+        return entity_types
+
+    def _aggregate_entity_counts(self):
+        correct = Counter()
+        golden = Counter()
+        predict = Counter()
+
+        for tag, count in self.correct_tags_number.items():
+            entity = self._extract_entity_type(tag)
+            if entity:
+                correct[entity] += count
+
+        for tag, count in self.golden_tags_counter.items():
+            entity = self._extract_entity_type(tag)
+            if entity:
+                golden[entity] += count
+
+        for tag, count in self.predict_tags_counter.items():
+            entity = self._extract_entity_type(tag)
+            if entity:
+                predict[entity] += count
+
+        return correct, golden, predict
+
+    def _cal_entity_level_metrics(self):
+        eps = 1e-10
+        total_correct = sum(self.entity_correct_counts.values())
+        total_predict = sum(self.entity_predict_counts.values())
+        total_golden = sum(self.entity_golden_counts.values())
+
+        self.overall_precision = total_correct / (total_predict + eps)
+        self.overall_recall = total_correct / (total_golden + eps)
+        self.overall_f1 = 2 * self.overall_precision * self.overall_recall / \
+            (self.overall_precision + self.overall_recall + eps)
+
+        for entity in self.entity_types:
+            correct = self.entity_correct_counts[entity]
+            predict = self.entity_predict_counts[entity]
+            golden = self.entity_golden_counts[entity]
+
+            precision = correct / (predict + eps)
+            recall = correct / (golden + eps)
+            f1 = 2 * precision * recall / (precision + recall + eps)
+
+            self.entity_precision[entity] = precision
+            self.entity_recall[entity] = recall
+            self.entity_f1[entity] = f1
 
     def _remove_Otags(self):
 
