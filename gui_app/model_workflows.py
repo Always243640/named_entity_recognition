@@ -1,5 +1,6 @@
 import io
 from contextlib import redirect_stdout
+from pathlib import Path
 from typing import Callable, Tuple
 
 from data import build_corpus
@@ -7,10 +8,12 @@ from evaluate import bilstm_train_and_eval, crf_train_eval, ensemble_evaluate, h
 from evaluating import Metrics
 from utils import extend_maps, load_model, prepocess_data_for_lstmcrf
 
-HMM_MODEL_PATH = './ckpts/hmm.pkl'
-CRF_MODEL_PATH = './ckpts/crf.pkl'
-BiLSTM_MODEL_PATH = './ckpts/bilstm.pkl'
-BiLSTMCRF_MODEL_PATH = './ckpts/bilstm_crf.pkl'
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "DataNER"
+HMM_MODEL_PATH = PROJECT_ROOT / "ckpts" / "hmm.pkl"
+CRF_MODEL_PATH = PROJECT_ROOT / "ckpts" / "crf.pkl"
+BiLSTM_MODEL_PATH = PROJECT_ROOT / "ckpts" / "bilstm.pkl"
+BiLSTMCRF_MODEL_PATH = PROJECT_ROOT / "ckpts" / "bilstm_crf.pkl"
 
 ModelProgressCallback = Callable[[str, int], None]
 
@@ -33,9 +36,9 @@ def _notify(callback: ModelProgressCallback, message: str, progress: int) -> Non
 
 
 def _load_datasets():
-    train_word_lists, train_tag_lists, word2id, tag2id = build_corpus("train")
-    dev_word_lists, dev_tag_lists = build_corpus("dev", make_vocab=False)
-    test_word_lists, test_tag_lists = build_corpus("test", make_vocab=False)
+    train_word_lists, train_tag_lists, word2id, tag2id = build_corpus("train", data_dir=str(DATA_DIR))
+    dev_word_lists, dev_tag_lists = build_corpus("dev", make_vocab=False, data_dir=str(DATA_DIR))
+    test_word_lists, test_tag_lists = build_corpus("test", make_vocab=False, data_dir=str(DATA_DIR))
     return (
         (train_word_lists, train_tag_lists),
         (dev_word_lists, dev_tag_lists),
@@ -115,16 +118,16 @@ def evaluate_selected_model(model_name: str, callback: ModelProgressCallback = N
 
     report(f"加载{model_name}模型并开始评估...", 15)
     if model_name == "HMM":
-        hmm_model = load_model(HMM_MODEL_PATH)
+        hmm_model = load_model(str(HMM_MODEL_PATH))
         stdout, pred_tag_lists = _capture_stdout(
             hmm_model.test, test_word_lists, word2id, tag2id
         )
     elif model_name == "CRF":
-        crf_model = load_model(CRF_MODEL_PATH)
+        crf_model = load_model(str(CRF_MODEL_PATH))
         stdout, pred_tag_lists = _capture_stdout(crf_model.test, test_word_lists)
     elif model_name == "BiLSTM":
         bilstm_word2id, bilstm_tag2id = extend_maps(word2id, tag2id, for_crf=False)
-        bilstm_model = load_model(BiLSTM_MODEL_PATH)
+        bilstm_model = load_model(str(BiLSTM_MODEL_PATH))
         bilstm_model.model.bilstm.flatten_parameters()
         stdout, result = _capture_stdout(
             bilstm_model.test,
@@ -136,7 +139,7 @@ def evaluate_selected_model(model_name: str, callback: ModelProgressCallback = N
         pred_tag_lists, test_tag_lists = result
     elif model_name == "BiLSTM-CRF":
         crf_word2id, crf_tag2id = extend_maps(word2id, tag2id, for_crf=True)
-        bilstm_model = load_model(BiLSTMCRF_MODEL_PATH)
+        bilstm_model = load_model(str(BiLSTMCRF_MODEL_PATH))
         bilstm_model.model.bilstm.bilstm.flatten_parameters()
         processed_test_word_lists, processed_test_tag_lists = prepocess_data_for_lstmcrf(
             test_word_lists, test_tag_lists, test=True
