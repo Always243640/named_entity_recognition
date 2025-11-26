@@ -1,11 +1,16 @@
 import time
 from collections import Counter
+from pathlib import Path
 
 from models.hmm import HMM
 from models.crf import CRFModel
 from models.bilstm_crf import BILSTM_Model
 from utils import save_model, flatten_lists
 from evaluating import Metrics
+
+
+CKPT_DIR = Path(__file__).resolve().parent / "ckpts"
+CKPT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def hmm_train_eval(train_data, test_data, word2id, tag2id, remove_O=False):
@@ -19,7 +24,7 @@ def hmm_train_eval(train_data, test_data, word2id, tag2id, remove_O=False):
                     train_tag_lists,
                     word2id,
                     tag2id)
-    save_model(hmm_model, "./ckpts/hmm.pkl")
+    save_model(hmm_model, str(CKPT_DIR / "hmm.pkl"))
 
     # 评估hmm模型
     pred_tag_lists = hmm_model.test(test_word_lists,
@@ -41,7 +46,7 @@ def crf_train_eval(train_data, test_data, remove_O=False):
 
     crf_model = CRFModel()
     crf_model.train(train_word_lists, train_tag_lists)
-    save_model(crf_model, "./ckpts/crf.pkl")
+    save_model(crf_model, str(CKPT_DIR / "crf.pkl"))
 
     pred_tag_lists = crf_model.test(test_word_lists)
 
@@ -66,7 +71,7 @@ def bilstm_train_and_eval(train_data, dev_data, test_data,
                        dev_word_lists, dev_tag_lists, word2id, tag2id)
 
     model_name = "bilstm_crf" if crf else "bilstm"
-    save_model(bilstm_model, "./ckpts/"+model_name+".pkl")
+    save_model(bilstm_model, str(CKPT_DIR / f"{model_name}.pkl"))
 
     print("训练完毕,共用时{}秒.".format(int(time.time()-start)))
     print("评估{}模型中...".format(model_name))

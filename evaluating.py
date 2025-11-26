@@ -82,8 +82,8 @@ class Metrics(object):
           avg/total      0.779     0.764     0.770      6178
         """
         header_format = '{:>9s}  {:>9} {:>9} {:>9} {:>9}'
-        header = ['precision', 'recall', 'f1-score', 'support']
-        print(header_format.format('', *header))
+        header = ['标签', 'precision', 'recall', 'f1-score', 'support']
+        print(header_format.format(*header))
 
         row_format = '{:>9s}  {:>9.4f} {:>9.4f} {:>9.4f} {:>9}'
         # 打印总体指标

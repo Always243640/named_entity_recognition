@@ -1,7 +1,7 @@
 import io
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Callable, Tuple
+from typing import Callable, List, Tuple
 
 from data import build_corpus
 from evaluate import bilstm_train_and_eval, crf_train_eval, ensemble_evaluate, hmm_train_eval
@@ -33,6 +33,74 @@ class UnknownModelError(ValueError):
 def _notify(callback: ModelProgressCallback, message: str, progress: int) -> None:
     if callback:
         callback(message, progress)
+
+
+def _prepare_sentences(text: str) -> List[List[str]]:
+    sentences = [list(line.strip()) for line in text.splitlines() if line.strip()]
+    if not sentences:
+        raise ValueError("请输入需要预测的文本内容")
+    return sentences
+
+
+def _extract_entities(word_list: List[str], tag_list: List[str]) -> List[str]:
+    entities = []
+    current_tokens: List[str] = []
+    current_type: str = None
+
+    def _close_entity():
+        if current_tokens and current_type:
+            entities.append(f"{current_type}: {''.join(current_tokens)}")
+
+    for word, tag in zip(word_list, tag_list):
+        if tag == "O" or tag is None:
+            _close_entity()
+            current_tokens, current_type = [], None
+            continue
+
+        try:
+            prefix, ent_type = tag.split("-", 1)
+        except ValueError:
+            _close_entity()
+            current_tokens, current_type = [], None
+            continue
+
+        if prefix in {"B", "S"}:
+            _close_entity()
+            current_tokens = [word]
+            current_type = ent_type
+            if prefix == "S":
+                _close_entity()
+                current_tokens, current_type = [], None
+        elif prefix in {"I", "M"}:
+            if current_type == ent_type:
+                current_tokens.append(word)
+            else:
+                current_tokens, current_type = [word], ent_type
+        elif prefix == "E":
+            if current_type != ent_type:
+                current_tokens, current_type = [word], ent_type
+            else:
+                current_tokens.append(word)
+            _close_entity()
+            current_tokens, current_type = [], None
+        else:
+            _close_entity()
+            current_tokens, current_type = [], None
+
+    _close_entity()
+    return entities
+
+
+def _format_predictions(sentences: List[List[str]], tag_lists: List[List[str]]) -> str:
+    lines: List[str] = []
+    for idx, (words, tags) in enumerate(zip(sentences, tag_lists), start=1):
+        labeled = " ".join(f"{w}/{t}" for w, t in zip(words, tags))
+        entities = _extract_entities(words, tags)
+        entity_line = "，".join(entities) if entities else "未识别到实体"
+        lines.append(f"句子{idx}：{''.join(words)}")
+        lines.append(f"标注序列：{labeled}")
+        lines.append(f"实体：{entity_line}")
+    return "\n".join(lines)
 
 
 def _load_datasets():
@@ -172,3 +240,44 @@ def evaluate_selected_model(model_name: str, callback: ModelProgressCallback = N
 
     report("模型评估完成！", 100)
     return "\n".join(filter(None, [stdout, metric_buffer, confusion_buffer, ensemble_stdout]))
+
+
+def predict_entities(model_name: str, text: str, callback: ModelProgressCallback = None) -> str:
+    sentences = _prepare_sentences(text)
+    _notify(callback, "加载数据集...", 5)
+    _, _, _, word2id, tag2id = _load_datasets()
+
+    _notify(callback, f"加载{model_name}模型...", 15)
+
+    if model_name == "HMM":
+        hmm_model = load_model(str(HMM_MODEL_PATH))
+        pred_tag_lists = hmm_model.test(sentences, word2id, tag2id)
+    elif model_name == "CRF":
+        crf_model = load_model(str(CRF_MODEL_PATH))
+        pred_tag_lists = crf_model.test(sentences)
+    elif model_name == "BiLSTM":
+        bilstm_word2id, bilstm_tag2id = extend_maps(word2id, tag2id, for_crf=False)
+        bilstm_model = load_model(str(BiLSTM_MODEL_PATH))
+        bilstm_model.model.bilstm.flatten_parameters()
+        pred_tag_lists, _ = bilstm_model.test(
+            sentences, None, bilstm_word2id, bilstm_tag2id
+        )
+    elif model_name == "BiLSTM-CRF":
+        crf_word2id, crf_tag2id = extend_maps(word2id, tag2id, for_crf=True)
+        processed_sentences = [list(words) for words in sentences]
+        dummy_tags = [[] for _ in processed_sentences]
+        processed_sentences, dummy_tags = prepocess_data_for_lstmcrf(
+            processed_sentences, dummy_tags, test=True
+        )
+        bilstm_model = load_model(str(BiLSTMCRF_MODEL_PATH))
+        bilstm_model.model.bilstm.bilstm.flatten_parameters()
+        pred_tag_lists, _ = bilstm_model.test(
+            processed_sentences, dummy_tags, crf_word2id, crf_tag2id
+        )
+    else:
+        raise UnknownModelError(f"不支持的模型类型：{model_name}")
+
+    _notify(callback, "预测完成，正在整理结果...", 80)
+    formatted = _format_predictions(sentences, pred_tag_lists)
+    _notify(callback, formatted, 100)
+    return formatted
