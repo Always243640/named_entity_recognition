@@ -125,7 +125,7 @@ def _capture_stdout(func, *args, **kwargs) -> Tuple[str, object]:
 
 def train_selected_model(model_name: str, callback: ModelProgressCallback = None) -> str:
     remove_O = False
-    _notify(callback, "加载数据集...", 5)
+    _notify(callback, None, 5)
     train_data, dev_data, test_data, word2id, tag2id = _load_datasets()
 
     def log_and_notify(message: str, progress: int):
@@ -171,12 +171,12 @@ def train_selected_model(model_name: str, callback: ModelProgressCallback = None
         raise UnknownModelError(f"不支持的模型类型：{model_name}")
 
     _notify(callback, stdout.strip(), 90)
-    log_and_notify("模型训练完成！", 100)
+    _notify(callback, None, 100)
     return stdout
 
 
 def evaluate_selected_model(model_name: str, callback: ModelProgressCallback = None) -> str:
-    _notify(callback, "加载数据集...", 5)
+    _notify(callback, None, 5)
     train_data, _, test_data, word2id, tag2id = _load_datasets()
     test_word_lists, test_tag_lists = test_data
     remove_O = False
@@ -238,13 +238,13 @@ def evaluate_selected_model(model_name: str, callback: ModelProgressCallback = N
         )
         report(ensemble_stdout.strip(), 95)
 
-    report("模型评估完成！", 100)
+    report(None, 100)
     return "\n".join(filter(None, [stdout, metric_buffer, confusion_buffer, ensemble_stdout]))
 
 
 def predict_entities(model_name: str, text: str, callback: ModelProgressCallback = None) -> str:
     sentences = _prepare_sentences(text)
-    _notify(callback, "加载数据集...", 5)
+    _notify(callback, None, 5)
     _, _, _, word2id, tag2id = _load_datasets()
 
     _notify(callback, f"加载{model_name}模型...", 15)
