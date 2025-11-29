@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from gui_app.model_workflows import (
@@ -15,6 +17,7 @@ class WorkerSignals(QtCore.QObject):
     finished = QtCore.pyqtSignal(str)
     error = QtCore.pyqtSignal(str)
     result = QtCore.pyqtSignal(str)
+    confusion = QtCore.pyqtSignal(object)
 
 
 class TrainWorker(QtCore.QThread):
@@ -51,7 +54,8 @@ class EvaluateWorker(QtCore.QThread):
                     self.signals.log.emit(message)
                 self.signals.progress.emit(progress)
 
-            evaluate_selected_model(self.model_name, callback)
+            _, confusion_data = evaluate_selected_model(self.model_name, callback)
+            self.signals.confusion.emit(confusion_data)
             self.signals.finished.emit("模型评估完成！")
         except UnknownModelError as exc:
             self.signals.error.emit(str(exc))
@@ -88,7 +92,10 @@ class ModelManagerWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("命名实体识别模型管理")
-        self.resize(620, 580)
+        icon_path = Path(__file__).resolve().parent.parent / "imgs" / "biLSTM_NER.png"
+        if icon_path.exists():
+            self.setWindowIcon(QtGui.QIcon(str(icon_path)))
+        self.resize(760, 820)
         self._init_ui()
         self.train_worker = None
         self.eval_worker = None
@@ -136,6 +143,18 @@ class ModelManagerWindow(QtWidgets.QWidget):
         self.log_view.setPlaceholderText("训练或评测日志将在此处显示...")
         layout.addWidget(self.log_view)
 
+        confusion_group = QtWidgets.QGroupBox("混淆矩阵")
+        confusion_layout = QtWidgets.QVBoxLayout(confusion_group)
+        self.confusion_label = QtWidgets.QLabel("混淆矩阵图将在此显示")
+        self.confusion_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.confusion_label.setMinimumHeight(260)
+        self.confusion_label.setStyleSheet(
+            "border: 1px solid #dcdcdc; background-color: #fafafa;"
+        )
+        self.confusion_label.setScaledContents(True)
+        confusion_layout.addWidget(self.confusion_label)
+        layout.addWidget(confusion_group)
+
         inference_group = QtWidgets.QGroupBox("实体识别")
         inference_layout = QtWidgets.QVBoxLayout(inference_group)
 
@@ -167,6 +186,8 @@ class ModelManagerWindow(QtWidgets.QWidget):
             worker.signals.finished.connect(finished_handler)
         if result_handler and hasattr(worker.signals, "result"):
             worker.signals.result.connect(result_handler)
+        if hasattr(worker.signals, "confusion"):
+            worker.signals.confusion.connect(self.show_confusion_matrix)
         worker.signals.finished.connect(lambda _: self._set_buttons_enabled(True))
         worker.signals.error.connect(self.handle_error)
         worker.signals.error.connect(lambda _: self._set_buttons_enabled(True))
@@ -197,6 +218,8 @@ class ModelManagerWindow(QtWidgets.QWidget):
         selected_model = self.model_combo.currentText()
         self.log_view.clear()
         self.progress_bar.setValue(0)
+        self.confusion_label.setText("正在评估并生成混淆矩阵图...")
+        self.confusion_label.setPixmap(QtGui.QPixmap())
         self._set_buttons_enabled(False)
 
         self.eval_worker = EvaluateWorker(selected_model)
@@ -222,3 +245,64 @@ class ModelManagerWindow(QtWidgets.QWidget):
     def display_prediction(self, content: str):
         if content:
             self.predict_output.setPlainText(content)
+
+    def _create_confusion_matrix_pixmap(
+        self, tags, matrix, cell_size: int = 60, margin: int = 120
+    ) -> QtGui.QPixmap:
+        if not tags or not matrix:
+            return QtGui.QPixmap()
+
+        width = margin + cell_size * len(tags)
+        height = margin + cell_size * len(tags)
+        image = QtGui.QImage(width, height, QtGui.QImage.Format_ARGB32)
+        image.fill(QtCore.Qt.white)
+
+        painter = QtGui.QPainter(image)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        label_font = painter.font()
+        label_font.setPointSize(10)
+        painter.setFont(label_font)
+        pen = QtGui.QPen(QtCore.Qt.black)
+        painter.setPen(pen)
+
+        for idx, tag in enumerate(tags):
+            top_rect = QtCore.QRectF(
+                margin + idx * cell_size, margin - cell_size, cell_size, cell_size
+            )
+            left_rect = QtCore.QRectF(
+                margin - cell_size, margin + idx * cell_size, cell_size, cell_size
+            )
+            painter.drawText(top_rect, QtCore.Qt.AlignCenter, tag)
+            painter.drawText(left_rect, QtCore.Qt.AlignCenter, tag)
+
+        max_value = max((max(row) for row in matrix if row), default=0)
+        for row_idx, row in enumerate(matrix):
+            for col_idx, value in enumerate(row):
+                rect = QtCore.QRectF(
+                    margin + col_idx * cell_size,
+                    margin + row_idx * cell_size,
+                    cell_size,
+                    cell_size,
+                )
+                if max_value:
+                    intensity = int(200 * value / max_value)
+                    painter.fillRect(rect, QtGui.QColor(70, 130, 180, 55 + intensity))
+                painter.drawRect(rect)
+                painter.drawText(rect, QtCore.Qt.AlignCenter, str(value))
+
+        painter.end()
+        return QtGui.QPixmap.fromImage(image)
+
+    def show_confusion_matrix(self, data):
+        if not data or len(data) != 2:
+            self.confusion_label.setText("未生成混淆矩阵图")
+            self.confusion_label.setPixmap(QtGui.QPixmap())
+            return
+
+        tags, matrix = data
+        pixmap = self._create_confusion_matrix_pixmap(tags, matrix)
+        if pixmap.isNull():
+            self.confusion_label.setText("混淆矩阵生成失败")
+            return
+
+        self.confusion_label.setPixmap(pixmap)

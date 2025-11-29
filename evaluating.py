@@ -1,4 +1,5 @@
 from collections import Counter
+from typing import List, Tuple
 
 from utils import flatten_lists
 
@@ -216,27 +217,31 @@ class Metrics(object):
             len(O_tag_indices) / length * 100
         ))
 
+    def _calculate_confusion_matrix(self) -> Tuple[List[str], List[List[int]]]:
+        tag_list = sorted(self.tagset)
+        index_map = {tag: idx for idx, tag in enumerate(tag_list)}
+        tags_size = len(tag_list)
+        matrix = [[0 for _ in range(tags_size)] for _ in range(tags_size)]
+
+        for golden_tag, predict_tag in zip(self.golden_tags, self.predict_tags):
+            row = index_map.get(golden_tag)
+            col = index_map.get(predict_tag)
+            if row is None or col is None:  # pragma: no cover - defensive guard
+                continue
+            matrix[row][col] += 1
+
+        return tag_list, matrix
+
+    def get_confusion_matrix(self) -> Tuple[List[str], List[List[int]]]:
+        return self._calculate_confusion_matrix()
+
     def report_confusion_matrix(self):
         """计算混淆矩阵"""
 
         print("\nConfusion Matrix:")
-        tag_list = list(self.tagset)
-        # 初始化混淆矩阵 matrix[i][j]表示第i个tag被模型预测成第j个tag的次数
+        tag_list, matrix = self._calculate_confusion_matrix()
         tags_size = len(tag_list)
-        matrix = []
-        for i in range(tags_size):
-            matrix.append([0] * tags_size)
 
-        # 遍历tags列表
-        for golden_tag, predict_tag in zip(self.golden_tags, self.predict_tags):
-            try:
-                row = tag_list.index(golden_tag)
-                col = tag_list.index(predict_tag)
-                matrix[row][col] += 1
-            except ValueError:  # 有极少数标记没有出现在golden_tags，但出现在predict_tags，跳过这些标记
-                continue
-
-        # 输出矩阵
         row_format_ = '{:>7} ' * (tags_size+1)
         print(row_format_.format("", *tag_list))
         for i, row in enumerate(matrix):

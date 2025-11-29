@@ -175,7 +175,9 @@ def train_selected_model(model_name: str, callback: ModelProgressCallback = None
     return stdout
 
 
-def evaluate_selected_model(model_name: str, callback: ModelProgressCallback = None) -> str:
+def evaluate_selected_model(
+    model_name: str, callback: ModelProgressCallback = None
+) -> Tuple[str, Tuple[List[str], List[List[int]]]]:
     _notify(callback, None, 5)
     train_data, _, test_data, word2id, tag2id = _load_datasets()
     test_word_lists, test_tag_lists = test_data
@@ -224,6 +226,7 @@ def evaluate_selected_model(model_name: str, callback: ModelProgressCallback = N
         raise UnknownModelError(f"不支持的模型类型：{model_name}")
 
     metrics = Metrics(test_tag_lists, pred_tag_lists, remove_O=remove_O)
+    tag_list, confusion_matrix = metrics.get_confusion_matrix()
     metric_buffer, _ = _capture_stdout(metrics.report_scores)
     confusion_buffer, _ = _capture_stdout(metrics.report_confusion_matrix)
     ensemble_stdout = ""
@@ -239,7 +242,10 @@ def evaluate_selected_model(model_name: str, callback: ModelProgressCallback = N
         report(ensemble_stdout.strip(), 95)
 
     report(None, 100)
-    return "\n".join(filter(None, [stdout, metric_buffer, confusion_buffer, ensemble_stdout]))
+    output_text = "\n".join(
+        filter(None, [stdout, metric_buffer, confusion_buffer, ensemble_stdout])
+    )
+    return output_text, (tag_list, confusion_matrix)
 
 
 def predict_entities(model_name: str, text: str, callback: ModelProgressCallback = None) -> str:
