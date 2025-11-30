@@ -68,10 +68,10 @@ def main():
         crf_word2id, crf_tag2id,remove_O=remove_O
     )
 
-    ensemble_evaluate(
-        [hmm_pred, crf_pred, lstm_pred, lstmcrf_pred],
-        test_tag_lists
-    )
+    # ensemble_evaluate(
+    #     [hmm_pred, crf_pred, lstm_pred, lstmcrf_pred],
+    #     test_tag_lists
+    # )
 
 
 if __name__ == "__main__":

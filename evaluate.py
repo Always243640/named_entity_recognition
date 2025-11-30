@@ -98,7 +98,7 @@ def ensemble_evaluate(results, targets, remove_O=False):
     targets = flatten_lists(targets)
     assert len(pred_tags) == len(targets)
 
-    print("Ensemble 四个模型的结果如下：")
-    metrics = Metrics(targets, pred_tags, remove_O=remove_O)
-    metrics.report_scores()
-    metrics.report_confusion_matrix()
+    # print("Ensemble 四个模型的结果如下：")
+    # metrics = Metrics(targets, pred_tags, remove_O=remove_O)
+    # metrics.report_scores()
+    # metrics.report_confusion_matrix()
