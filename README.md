@@ -25,6 +25,7 @@ named_entity_recognition/
 ├─ utils/                 # 工具函数模块
 ├─ main.py                # 重新训练全部模型的入口脚本
 ├─ test.py                # 测评所用模型的脚本
+├─ analysis.ipynb         # 模型错误预测分析
 ├─ output.txt             # 实验结果记录
 └─ ...                    # 其他辅助脚本与文件
 ```
