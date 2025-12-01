@@ -34,7 +34,8 @@ def tensorized(batch, maps):
     PAD = maps.get('<pad>')
     UNK = maps.get('<unk>')
 
-    max_len = len(batch[0])
+    # 找到当前batch中的最大长度
+    max_len = max(len(l) for l in batch)
     batch_size = len(batch)
 
     batch_tensor = torch.ones(batch_size, max_len).long() * PAD
