@@ -89,15 +89,12 @@ def ensemble_evaluate(results, targets, remove_O=False):
     """ensemble多个模型"""
     for i in range(len(results)):
         results[i] = flatten_lists(results[i])
-
     pred_tags = []
     for result in zip(*results):
         ensemble_tag = Counter(result).most_common(1)[0][0]
         pred_tags.append(ensemble_tag)
-
     targets = flatten_lists(targets)
     assert len(pred_tags) == len(targets)
-
     # print("Ensemble 四个模型的结果如下：")
     # metrics = Metrics(targets, pred_tags, remove_O=remove_O)
     # metrics.report_scores()
